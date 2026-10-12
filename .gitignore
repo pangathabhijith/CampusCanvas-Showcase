@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python runtime and CampusCanvas user data
+.pythonlibs/
+__pycache__/
+*.py[cod]
+artifacts/api-server/campuscanvas/data/
+artifacts/api-server/campuscanvas/static/uploads/*
+!artifacts/api-server/campuscanvas/static/uploads/.gitkeep

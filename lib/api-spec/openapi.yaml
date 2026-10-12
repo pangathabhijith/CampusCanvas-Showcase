@@ -3,13 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: CampusCanvas student creative showcase API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Account and session operations
+  - name: users
+    description: Profiles and creator relationships
+  - name: posts
+    description: Creative work and community interactions
+  - name: events
+    description: Campus events and competition entries
+  - name: admin
+    description: Moderation and administration
 paths:
   /healthz:
     get:
@@ -24,7 +34,525 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/session:
+    get:
+      operationId: getSession
+      tags: [auth]
+      summary: Get the current signed-in user and CSRF token
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Create a student or faculty account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Signed-in session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Error"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Sign out
+      responses:
+        "204":
+          description: Session ended
+  /users/me:
+    get:
+      operationId: getMyProfile
+      tags: [users]
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Current profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateMyProfile
+      tags: [users]
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /users/me/avatar:
+    post:
+      operationId: uploadAvatar
+      tags: [users]
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarInput"
+      responses:
+        "200":
+          description: Updated profile image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+  /users:
+    get:
+      operationId: getCreators
+      tags: [users]
+      summary: Browse student creators
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: Creators
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+  /users/{userId}:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Creator profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "404":
+          $ref: "#/components/responses/Error"
+  /users/{userId}/follow:
+    post:
+      operationId: toggleFollow
+      tags: [users]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: Follow state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResult"
+  /posts:
+    get:
+      operationId: getPosts
+      tags: [posts]
+      summary: Search approved creative work
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: category
+          schema: { type: string, maxLength: 60 }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [latest, trending, featured]
+            default: latest
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 24 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Matching approved posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Post" }
+    post:
+      operationId: createPost
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      summary: Upload a creative post for review
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PostInput"
+      responses:
+        "201":
+          description: Post submitted for moderation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "400":
+          $ref: "#/components/responses/Error"
+  /posts/{postId}:
+    get:
+      operationId: getPost
+      tags: [posts]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "200":
+          description: Post with comments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostDetail"
+        "404":
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deletePost
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "204":
+          description: Post removed by owner or administrator
+  /posts/{postId}/like:
+    post:
+      operationId: toggleLike
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "200":
+          description: Like state and total
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResult"
+  /posts/{postId}/comments:
+    post:
+      operationId: addComment
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommentInput"
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Comment"
+  /posts/{postId}/bookmark:
+    post:
+      operationId: toggleBookmark
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "200":
+          description: Bookmark state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResult"
+  /posts/{postId}/share:
+    post:
+      operationId: sharePost
+      tags: [posts]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      responses:
+        "200":
+          description: Share count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResult"
+  /bookmarks:
+    get:
+      operationId: getBookmarks
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Bookmarked posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Post" }
+  /posts/{postId}/report:
+    post:
+      operationId: reportPost
+      tags: [posts]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportInput"
+      responses:
+        "201":
+          description: Report submitted for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+  /events:
+    get:
+      operationId: getEvents
+      tags: [events]
+      responses:
+        "200":
+          description: Campus events and announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+    post:
+      operationId: createEvent
+      tags: [events]
+      security: [{ sessionCookie: [] }]
+      summary: Create an event or announcement (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "201":
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+  /events/{eventId}/entries:
+    post:
+      operationId: enterEvent
+      tags: [events]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventEntryInput"
+      responses:
+        "201":
+          description: Competition entry recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToggleResult"
+  /admin/summary:
+    get:
+      operationId: getAdminSummary
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Moderation dashboard totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSummary"
+  /admin/posts:
+    get:
+      operationId: getAdminPosts
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+            default: pending
+      responses:
+        "200":
+          description: Posts filtered by moderation status
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Post" }
+  /admin/posts/{postId}/moderation:
+    post:
+      operationId: moderatePost
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModerationInput"
+      responses:
+        "200":
+          description: Updated moderation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+  /admin/reports:
+    get:
+      operationId: getAdminReports
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Open community reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Report" }
+  /admin/reports/{reportId}/resolve:
+    post:
+      operationId: resolveReport
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: path
+          name: reportId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Report resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+  /admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Accounts for administrator review
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+  /admin/users/{userId}/status:
+    patch:
+      operationId: setUserStatus
+      tags: [admin]
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserStatusInput"
+      responses:
+        "200":
+          description: Updated account state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+  parameters:
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { type: integer }
+    PostId:
+      in: path
+      name: postId
+      required: true
+      schema: { type: integer }
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +561,202 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+    User:
+      type: object
+      required: [id, name, email, role, department, bio, profile_pic, is_active, created_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: ["string", "null"] }
+        role: { type: string, enum: [student, faculty, admin] }
+        department: { type: string }
+        bio: { type: string }
+        profile_pic: { type: ["string", "null"] }
+        skills: { type: string }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        post_count: { type: integer }
+        follower_count: { type: integer }
+        following: { type: boolean }
+    Profile:
+      type: object
+      required: [user, posts, follower_count, following_count]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        posts:
+          type: array
+          items: { $ref: "#/components/schemas/Post" }
+        follower_count: { type: integer }
+        following_count: { type: integer }
+    Session:
+      type: object
+      required: [user, csrf_token]
+      properties:
+        user: { oneOf: [{ $ref: "#/components/schemas/User" }, { type: "null" }] }
+        csrf_token: { type: string }
+    RegisterInput:
+      type: object
+      required: [name, email, password, department, role]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        department: { type: string, minLength: 2, maxLength: 120 }
+        role: { type: string, enum: [student, faculty] }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1, maxLength: 128 }
+    ProfileInput:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        department: { type: string, maxLength: 120 }
+        bio: { type: string, maxLength: 500 }
+        skills: { type: string, maxLength: 300 }
+    AvatarInput:
+      type: object
+      required: [media]
+      properties:
+        media:
+          type: string
+          format: binary
+    Post:
+      type: object
+      required: [id, user_id, title, description, category, media_path, media_type, tags, status, views, created_at, creator_name, creator_department, like_count, comment_count, liked, bookmarked, featured]
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        media_path: { type: ["string", "null"] }
+        media_type: { type: string }
+        tags: { type: string }
+        status: { type: string, enum: [pending, approved, rejected] }
+        views: { type: integer }
+        created_at: { type: string, format: date-time }
+        creator_name: { type: string }
+        creator_department: { type: string }
+        creator_pic: { type: ["string", "null"] }
+        like_count: { type: integer }
+        comment_count: { type: integer }
+        share_count: { type: integer }
+        liked: { type: boolean }
+        bookmarked: { type: boolean }
+        featured: { type: boolean }
+    PostDetail:
+      type: object
+      required: [post, comments]
+      properties:
+        post: { $ref: "#/components/schemas/Post" }
+        comments:
+          type: array
+          items: { $ref: "#/components/schemas/Comment" }
+    PostInput:
+      type: object
+      required: [title, category]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 5000 }
+        category: { type: string, maxLength: 60 }
+        tags: { type: string, maxLength: 300 }
+        media:
+          type: string
+          format: binary
+        text_body: { type: string, maxLength: 20000 }
+    Comment:
+      type: object
+      required: [id, post_id, user_id, text, created_at, user_name]
+      properties:
+        id: { type: integer }
+        post_id: { type: integer }
+        user_id: { type: integer }
+        text: { type: string }
+        created_at: { type: string, format: date-time }
+        user_name: { type: string }
+        user_pic: { type: ["string", "null"] }
+    CommentInput:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 1000 }
+    ToggleResult:
+      type: object
+      required: [active]
+      properties:
+        active: { type: boolean }
+        count: { type: integer }
+    Report:
+      type: object
+      required: [id, post_id, post_title, reported_by, reporter_name, reason, status, created_at]
+      properties:
+        id: { type: integer }
+        post_id: { type: integer }
+        post_title: { type: string }
+        reported_by: { type: integer }
+        reporter_name: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [open, resolved] }
+        created_at: { type: string, format: date-time }
+    ReportInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    Event:
+      type: object
+      required: [id, title, description, type, event_date, location, created_by, created_at, entry_count, entered]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [event, competition, announcement] }
+        event_date: { type: ["string", "null"], format: date-time }
+        location: { type: string }
+        created_by: { type: integer }
+        created_at: { type: string, format: date-time }
+        entry_count: { type: integer }
+        entered: { type: boolean }
+    EventInput:
+      type: object
+      required: [title, description, type]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120 }
+        description: { type: string, minLength: 3, maxLength: 3000 }
+        type: { type: string, enum: [event, competition, announcement] }
+        event_date: { type: ["string", "null"], format: date-time }
+        location: { type: string, maxLength: 200 }
+    EventEntryInput:
+      type: object
+      properties:
+        note: { type: string, maxLength: 1000 }
+    AdminSummary:
+      type: object
+      required: [pending_posts, open_reports, active_users, approved_posts, events]
+      properties:
+        pending_posts: { type: integer }
+        open_reports: { type: integer }
+        active_users: { type: integer }
+        approved_posts: { type: integer }
+        events: { type: integer }
+    ModerationInput:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [approved, rejected] }
+        note: { type: string, maxLength: 500 }
+        featured: { type: boolean }
+    UserStatusInput:
+      type: object
+      required: [is_active]
+      properties:
+        is_active: { type: boolean }
 

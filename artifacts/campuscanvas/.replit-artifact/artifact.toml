@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "CampusCanvas"
+description = "A creative community for college students to share portfolios, discover campus talent, engage with posts, and find events and competitions, with administrator-led content moderation."
+version = "1.0.0"
+id = "artifacts/campuscanvas"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21588
+
+[services.development]
+run = "pnpm --filter @workspace/campuscanvas run dev"
+
+[services.production]
+build = [ "env", "PORT=21588", "BASE_PATH=/", "NODE_ENV=production", "pnpm", "--filter", "@workspace/campuscanvas", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/campuscanvas/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21588"
+BASE_PATH = "/"
