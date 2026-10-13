@@ -43,6 +43,14 @@ def get_posts():
 def get_empty_lists():
     return jsonify({"data": []})
 
+@app.route('/signup', methods=['POST'])
+def signup():
+    return jsonify({"success": True, "message": "Account created successfully"})
+
+@app.route('/login', methods=['POST'])
+def login():
+    return jsonify({"success": True, "message": "Logged in successfully", "token": "mock-token"})
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
