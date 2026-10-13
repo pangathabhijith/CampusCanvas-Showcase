@@ -1,87 +1,150 @@
 from flask import Flask, jsonify, request
 import os
+import sqlite3
+import uuid
 import base64
 from datetime import datetime
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # Allow up to 50MB uploads for video/audio/photos
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload limit
 
-# Pre-loaded user database
-users_db = {
-    "abhijithpangath911@gmail.com": {
-        "id": 1,
-        "name": "Abhijith Pangath",
-        "email": "abhijithpangath911@gmail.com",
-        "password": "password123",
-        "phone": "",
-        "department": "Bsc Computer science",
-        "role": "Student",
-        "bio": "Computer Science student at MES Kalladi College.",
-        "practices": "Photography, Drawing",
-        "avatar": "https://api.dicebear.com/7.x/initials/svg?seed=Abhijith%20Pangath"
-    },
-    "pangathabhijith@gmail.com": {
-        "id": 2,
-        "name": "Abhijith Pangath",
-        "email": "pangathabhijith@gmail.com",
-        "password": "password123",
-        "phone": "",
-        "department": "Bsc Computer science",
-        "role": "Student",
-        "bio": "Computer Science student at MES Kalladi College.",
-        "practices": "Photography, Drawing",
-        "avatar": "https://api.dicebear.com/7.x/initials/svg?seed=Abhijith%20Pangath"
+DB_PATH = "campuscanvas.db"
+
+# Track active sessions per token and per student device so students never overwrite each other
+sessions_by_token = {}
+sessions_by_device = {}
+
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            phone TEXT DEFAULT '',
+            department TEXT DEFAULT '',
+            role TEXT DEFAULT 'Student',
+            bio TEXT DEFAULT '',
+            practices TEXT DEFAULT '',
+            avatar TEXT DEFAULT ''
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            category TEXT DEFAULT 'Photography',
+            media_type TEXT DEFAULT 'image',
+            media_url TEXT DEFAULT '',
+            author_id INTEGER,
+            author_name TEXT DEFAULT 'Student',
+            author_avatar TEXT DEFAULT '',
+            department TEXT DEFAULT '',
+            likes INTEGER DEFAULT 0,
+            shares INTEGER DEFAULT 0,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER,
+            author_name TEXT,
+            author_avatar TEXT,
+            text TEXT,
+            created_at TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            description TEXT,
+            date TEXT,
+            location TEXT,
+            organizer TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS bookmarks (
+            user_id INTEGER,
+            post_id INTEGER,
+            UNIQUE(user_id, post_id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+def get_device_key():
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+    ua = request.headers.get('User-Agent', 'unknown')
+    return f"{ip}|{ua}"
+
+
+def get_user_by_id(user_id):
+    if not user_id:
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return format_user(dict(row))
+
+
+def format_user(u):
+    practices_str = u.get("practices") or ""
+    practices_list = [p.strip() for p in practices_str.split(",") if p.strip()] if practices_str else []
+    return {
+        "id": u["id"],
+        "name": u["name"],
+        "email": u["email"],
+        "phone": u.get("phone") or "",
+        "phoneNumber": u.get("phone") or "",
+        "department": u.get("department") or "",
+        "role": u.get("role") or "Student",
+        "bio": u.get("bio") or "",
+        "practices": practices_str,
+        "creativePractices": practices_list,
+        "avatar": u.get("avatar") or f"https://api.dicebear.com/7.x/initials/svg?seed={u['name']}",
+        "profilePhoto": u.get("avatar") or f"https://api.dicebear.com/7.x/initials/svg?seed={u['name']}",
+        "avatarUrl": u.get("avatar") or f"https://api.dicebear.com/7.x/initials/svg?seed={u['name']}"
     }
-}
 
-current_session_user = users_db["abhijithpangath911@gmail.com"].copy()
 
-# In-memory storage for creations (photos, videos, audio, drawings, campus life)
-posts_list = [
-    {
-        "id": 1,
-        "title": "Welcome to CampusCanvas!",
-        "content": "Share your photography, drawings, videos, audio, and campus life moments.",
-        "description": "Share your photography, drawings, videos, audio, and campus life moments.",
-        "author": "Abhijith Pangath",
-        "authorName": "Abhijith Pangath",
-        "authorId": 1,
-        "authorAvatar": "https://api.dicebear.com/7.x/initials/svg?seed=Abhijith%20Pangath",
-        "department": "Bsc Computer science",
-        "category": "Campus Life",
-        "mediaType": "image",
-        "imageUrl": "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop&q=60",
-        "mediaUrl": "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop&q=60",
-        "likes": 12,
-        "likedBy": [],
-        "shares": 3,
-        "comments": [
-            {
-                "id": 1,
-                "author": "Abhijith Pangath",
-                "text": "Excited to see everyone's creations!",
-                "createdAt": datetime.utcnow().isoformat()
-            }
-        ],
-        "createdAt": datetime.utcnow().isoformat()
-    }
-]
+def get_current_student():
+    # 1. Check Authorization Bearer Token
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.replace('Bearer ', '').strip()
+        if token in sessions_by_token:
+            return get_user_by_id(sessions_by_token[token])
 
-events_list = [
-    {
-        "id": 1,
-        "title": "MES Kalladi College Art & Tech Fest",
-        "description": "Showcase your photography, drawings, music, and projects!",
-        "date": "2026-11-01",
-        "location": "Main Auditorium",
-        "organizer": "Abhijith Pangath"
-    }
-]
+    # 2. Check custom token header or query param
+    token = request.headers.get('X-Auth-Token') or request.args.get('token')
+    if token and token in sessions_by_token:
+        return get_user_by_id(sessions_by_token[token])
 
-bookmarks_list = []
+    # 3. Check student's browser/device session
+    device_key = get_device_key()
+    if device_key in sessions_by_device:
+        return get_user_by_id(sessions_by_device[device_key])
+
+    return None
+
 
 def extract_uploaded_file_as_data_url(field_names):
-    """Converts an uploaded file (image/video/audio) into a Base64 Data URL."""
     if not request.files:
         return None, None
     for name in field_names:
@@ -91,13 +154,13 @@ def extract_uploaded_file_as_data_url(field_names):
                 mime_type = file.mimetype or 'application/octet-stream'
                 encoded = base64.b64encode(file.read()).decode('utf-8')
                 return f"data:{mime_type};base64,{encoded}", mime_type
-    # Fallback: take the first available file
     for file in request.files.values():
         if file and file.filename:
             mime_type = file.mimetype or 'application/octet-stream'
             encoded = base64.b64encode(file.read()).decode('utf-8')
             return f"data:{mime_type};base64,{encoded}", mime_type
     return None, None
+
 
 @app.before_request
 def handle_options():
@@ -106,40 +169,49 @@ def handle_options():
         origin = request.headers.get('Origin', '*')
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, X-Auth-Token'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
         return response, 200
+
 
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin', '*')
     response.headers['Access-Control-Allow-Origin'] = origin
     response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, X-Auth-Token'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
     return response
 
+
 @app.route('/')
 def home():
-    return jsonify({"status": "running", "message": "CampusCanvas API is live!"})
+    return jsonify({"status": "running", "message": "CampusCanvas Multi-Student API is live!"})
 
-# --- 1. REGISTRATION (Requires Email, Password, Phone, Profile Photo) ---
+
+# --- 1. STUDENT REGISTRATION ---
 @app.route('/signup', methods=['POST', 'OPTIONS'])
 @app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
 @app.route('/register', methods=['POST', 'OPTIONS'])
 @app.route('/api/register', methods=['POST', 'OPTIONS'])
 def signup():
-    global current_session_user
     data = request.get_json(silent=True) or request.form.to_dict() or {}
-    
-    name = data.get('name') or data.get('username') or 'Abhijith Pangath'
-    email = (data.get('email') or 'abhijithpangath911@gmail.com').strip().lower()
-    password = data.get('password') or 'defaultpass'
-    phone = data.get('phone') or data.get('phoneNumber') or ''
-    department = data.get('department') or 'Bsc Computer science'
-    role = data.get('role') or 'Student'
-    
-    # Handle Profile Photo (file upload or URL)
+
+    name = (data.get('name') or data.get('username') or 'Student').strip()
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+    phone = (data.get('phone') or data.get('phoneNumber') or '').strip()
+    department = (data.get('department') or 'General').strip()
+    role = (data.get('role') or 'Student').strip()
+    bio = (data.get('bio') or '').strip()
+
+    practices_val = data.get('practices') or data.get('creativePractices') or ''
+    if isinstance(practices_val, list):
+        practices_val = ", ".join(practices_val)
+
+    if not email:
+        return jsonify({"error": "Email address is required", "success": False}), 400
+
     uploaded_avatar, _ = extract_uploaded_file_as_data_url(['avatar', 'profilePhoto', 'photo', 'image', 'file'])
     avatar_url = (
         uploaded_avatar
@@ -148,75 +220,99 @@ def signup():
         or data.get('avatarUrl')
         or f"https://api.dicebear.com/7.x/initials/svg?seed={name}"
     )
-    
-    user_obj = {
-        "id": len(users_db) + 1,
-        "name": name,
-        "email": email,
-        "password": password,
-        "phone": phone,
-        "phoneNumber": phone,
-        "department": department,
-        "role": role,
-        "bio": data.get('bio', ''),
-        "practices": data.get('practices', ''),
-        "avatar": avatar_url,
-        "profilePhoto": avatar_url,
-        "avatarUrl": avatar_url
-    }
-    users_db[email] = user_obj
-    current_session_user = user_obj.copy()
-    
-    resp = user_obj.copy()
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email = ?", (email,))
+    existing = c.fetchone()
+
+    if existing:
+        # Update existing student record with latest registration info
+        c.execute('''
+            UPDATE users
+            SET name = ?, password = ?, phone = ?, department = ?, role = ?, avatar = ?
+            WHERE email = ?
+        ''', (name, password, phone, department, role, avatar_url, email))
+        user_id = existing["id"]
+    else:
+        c.execute('''
+            INSERT INTO users (name, email, password, phone, department, role, bio, practices, avatar)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (name, email, password, phone, department, role, bio, practices_val, avatar_url))
+        user_id = c.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    user_obj = get_user_by_id(user_id)
+    token = str(uuid.uuid4())
+    sessions_by_token[token] = user_id
+    sessions_by_device[get_device_key()] = user_id
+
+    resp = dict(user_obj)
     resp["success"] = True
     resp["user"] = user_obj
     resp["data"] = user_obj
-    resp["token"] = "campuscanvas-jwt-token"
+    resp["token"] = token
     return jsonify(resp)
 
-# --- 2. LOGIN & LOGOUT ---
+
+# --- 2. STUDENT LOGIN & LOGOUT ---
 @app.route('/login', methods=['POST', 'OPTIONS'])
 @app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
-    global current_session_user
     data = request.get_json(silent=True) or request.form.to_dict() or {}
     email = (data.get('email') or '').strip().lower()
-    
-    if email and email in users_db:
-        current_session_user = users_db[email].copy()
-    else:
-        name = data.get('name') or 'Abhijith Pangath'
-        current_session_user = {
-            "id": len(users_db) + 1,
-            "name": name,
-            "email": email or 'abhijithpangath911@gmail.com',
-            "phone": data.get('phone', ''),
-            "department": data.get('department') or 'Bsc Computer science',
-            "role": "Student",
-            "bio": "",
-            "practices": "",
-            "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={name}"
-        }
-        if email:
-            users_db[email] = current_session_user.copy()
-            
-    resp = current_session_user.copy()
+    password = data.get('password') or ''
+
+    if not email:
+        return jsonify({"error": "Please enter your email", "success": False}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({"error": "Account not found. Please create an account first.", "success": False}), 404
+
+    if row["password"] and password and row["password"] != password:
+        conn.close()
+        return jsonify({"error": "Invalid password.", "success": False}), 401
+
+    user_id = row["id"]
+    conn.close()
+
+    user_obj = get_user_by_id(user_id)
+    token = str(uuid.uuid4())
+    sessions_by_token[token] = user_id
+    sessions_by_device[get_device_key()] = user_id
+
+    resp = dict(user_obj)
     resp["success"] = True
-    resp["user"] = current_session_user
-    resp["data"] = current_session_user
-    resp["token"] = "campuscanvas-jwt-token"
+    resp["user"] = user_obj
+    resp["data"] = user_obj
+    resp["token"] = token
     return jsonify(resp)
+
 
 @app.route('/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
 @app.route('/api/auth/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
 @app.route('/api/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
 def logout():
-    global current_session_user
-    current_session_user = None
-    return jsonify({"success": True, "user": None, "message": "Logged out successfully"})
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.replace('Bearer ', '').strip()
+        sessions_by_token.pop(token, None)
+    sessions_by_device.pop(get_device_key(), None)
+    return jsonify({"success": True, "user": None, "data": None, "message": "Signed out successfully"})
 
-# --- 3. SESSION & PROFILE MANAGEMENT ---
+
+# --- 3. CURRENT STUDENT SESSION & PROFILE ---
 @app.route('/session', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/api/auth/session', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/me', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
@@ -229,58 +325,124 @@ def logout():
 @app.route('/api/user/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/api/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/api/auth/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-def handle_user_session_and_profile():
-    global current_session_user
-    
-    if request.method in ['PUT', 'PATCH', 'POST']:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        if current_session_user is None:
-            current_session_user = users_db["abhijithpangath911@gmail.com"].copy()
-            
-        for field in ['name', 'department', 'bio', 'phone', 'phoneNumber']:
-            if field in data and data[field] is not None:
-                current_session_user[field] = data[field]
-                
-        if 'practices' in data:
-            current_session_user['practices'] = data['practices']
-        if 'creativePractices' in data:
-            current_session_user['practices'] = data['creativePractices']
-            
-        uploaded_avatar, _ = extract_uploaded_file_as_data_url(['avatar', 'profilePhoto', 'photo', 'image', 'file'])
-        if uploaded_avatar:
-            current_session_user['avatar'] = uploaded_avatar
-            current_session_user['profilePhoto'] = uploaded_avatar
-        elif data.get('avatar') or data.get('profilePhoto'):
-            avatar_val = data.get('avatar') or data.get('profilePhoto')
-            current_session_user['avatar'] = avatar_val
-            current_session_user['profilePhoto'] = avatar_val
-            
-        email = current_session_user.get('email')
-        if email:
-            users_db[email] = current_session_user.copy()
+def handle_profile():
+    student = get_current_student()
 
-    if current_session_user is None:
+    if request.method in ['PUT', 'PATCH', 'POST']:
+        if not student:
+            return jsonify({"error": "Not signed in", "success": False}), 401
+
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        name = data.get('name', student['name'])
+        department = data.get('department', student['department'])
+        bio = data.get('bio', student['bio'])
+        phone = data.get('phone') or data.get('phoneNumber') or student['phone']
+
+        practices_val = data.get('practices') if 'practices' in data else data.get('creativePractices', student['practices'])
+        if isinstance(practices_val, list):
+            practices_val = ", ".join(practices_val)
+
+        uploaded_avatar, _ = extract_uploaded_file_as_data_url(['avatar', 'profilePhoto', 'photo', 'image', 'file'])
+        avatar_url = uploaded_avatar or data.get('avatar') or data.get('profilePhoto') or student['avatar']
+
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''
+            UPDATE users
+            SET name = ?, department = ?, bio = ?, phone = ?, practices = ?, avatar = ?
+            WHERE id = ?
+        ''', (name, department, bio, phone, str(practices_val), avatar_url, student['id']))
+        conn.commit()
+        conn.close()
+
+        student = get_user_by_id(student['id'])
+
+    if not student:
         return jsonify({"user": None, "data": None})
 
-    resp = current_session_user.copy()
-    resp["user"] = current_session_user
-    resp["data"] = current_session_user
+    resp = dict(student)
+    resp["user"] = student
+    resp["data"] = student
     resp["success"] = True
     return jsonify(resp)
 
+
+# --- 4. ALL STUDENTS / CREATORS DIRECTORY ---
 @app.route('/users', methods=['GET', 'OPTIONS'])
 @app.route('/api/users', methods=['GET', 'OPTIONS'])
 @app.route('/creators', methods=['GET', 'OPTIONS'])
 @app.route('/api/creators', methods=['GET', 'OPTIONS'])
-def get_users():
-    return jsonify({"data": list(users_db.values()), "users": list(users_db.values())})
+def get_all_students():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM users ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    users = [format_user(dict(r)) for r in rows]
+    return jsonify({"data": users, "users": users})
 
-@app.route('/users/<user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/api/users/<user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-def get_or_update_specific_user(user_id):
-    return handle_user_session_and_profile()
 
-# --- 4. UPLOADS & LATEST CREATIONS FEED (Photos, Videos, Audio, Drawings, Events) ---
+@app.route('/users/<int:user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/api/users/<int:user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+def get_specific_student(user_id):
+    if request.method in ['PUT', 'PATCH', 'POST']:
+        return handle_profile()
+    user_obj = get_user_by_id(user_id)
+    if not user_obj:
+        return jsonify({"error": "Student not found"}), 404
+    resp = dict(user_obj)
+    resp["user"] = user_obj
+    resp["data"] = user_obj
+    return jsonify(resp)
+
+
+# --- 5. POSTS, CREATIONS & MULTIMEDIA UPLOADS ---
+def serialize_posts(rows):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    result = []
+    for r in rows:
+        post = dict(r)
+        c.execute("SELECT * FROM comments WHERE post_id = ? ORDER BY id ASC", (post["id"],))
+        comments = [
+            {
+                "id": cm["id"],
+                "author": cm["author_name"],
+                "authorName": cm["author_name"],
+                "authorAvatar": cm["author_avatar"],
+                "text": cm["text"],
+                "content": cm["text"],
+                "createdAt": cm["created_at"]
+            }
+            for cm in c.fetchall()
+        ]
+        result.append({
+            "id": post["id"],
+            "title": post["title"],
+            "content": post["content"],
+            "description": post["content"],
+            "category": post["category"],
+            "mediaType": post["media_type"],
+            "imageUrl": post["media_url"],
+            "mediaUrl": post["media_url"],
+            "videoUrl": post["media_url"] if post["media_type"] == "video" else "",
+            "audioUrl": post["media_url"] if post["media_type"] == "audio" else "",
+            "author": post["author_name"],
+            "authorName": post["author_name"],
+            "authorId": post["author_id"],
+            "authorAvatar": post["author_avatar"],
+            "department": post["department"],
+            "likes": post["likes"],
+            "shares": post["shares"],
+            "comments": comments,
+            "createdAt": post["created_at"]
+        })
+    conn.close()
+    return result
+
+
 @app.route('/posts', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/api/posts', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/upload', methods=['POST', 'OPTIONS'])
@@ -293,14 +455,15 @@ def get_or_update_specific_user(user_id):
 @app.route('/api/user/posts', methods=['GET', 'OPTIONS'])
 @app.route('/api/posts/user', methods=['GET', 'OPTIONS'])
 def handle_posts():
+    student = get_current_student()
+
     if request.method == 'POST':
-        # Require account login to upload
-        if current_session_user is None:
-            return jsonify({"error": "Please register or sign in before uploading.", "success": False}), 401
-            
+        if not student:
+            return jsonify({"error": "Please register or sign in to upload your work.", "success": False}), 401
+
         data = request.get_json(silent=True) or request.form.to_dict() or {}
         uploaded_media, mime_type = extract_uploaded_file_as_data_url(['file', 'media', 'image', 'video', 'audio', 'artwork'])
-        
+
         media_url = (
             uploaded_media
             or data.get('mediaUrl')
@@ -310,135 +473,69 @@ def handle_posts():
             or data.get('audioUrl')
             or ''
         )
-        
-        # Detect media type (photo/drawing, video, audio)
+
         media_type = data.get('mediaType') or data.get('type') or 'image'
         if mime_type:
             if mime_type.startswith('video/'):
                 media_type = 'video'
             elif mime_type.startswith('audio/'):
                 media_type = 'audio'
-                
-        new_post = {
-            "id": len(posts_list) + 1,
-            "title": data.get('title', 'Untitled Creation'),
-            "content": data.get('content') or data.get('description', ''),
-            "description": data.get('description') or data.get('content', ''),
-            "category": data.get('category', 'Photography'),
-            "mediaType": media_type,
-            "imageUrl": media_url,
-            "mediaUrl": media_url,
-            "videoUrl": media_url if media_type == 'video' else data.get('videoUrl', ''),
-            "audioUrl": media_url if media_type == 'audio' else data.get('audioUrl', ''),
-            "author": current_session_user.get('name', 'Abhijith Pangath'),
-            "authorName": current_session_user.get('name', 'Abhijith Pangath'),
-            "authorId": current_session_user.get('id', 1),
-            "authorAvatar": current_session_user.get('avatar', ''),
-            "department": current_session_user.get('department', 'Bsc Computer science'),
-            "likes": 0,
-            "likedBy": [],
-            "shares": 0,
-            "comments": [],
-            "createdAt": datetime.utcnow().isoformat()
-        }
-        # Insert at index 0 so it immediately appears first in "Latest Creations"
-        posts_list.insert(0, new_post)
-        return jsonify({"success": True, "post": new_post, "data": new_post})
-        
-    # Handle sorting (?sort=latest, ?sort=trending, ?sort=featured)
-    sort_by = request.args.get('sort', 'latest')
-    results = list(posts_list)
-    if sort_by == 'trending':
-        results.sort(key=lambda x: x.get('likes', 0), reverse=True)
-        
-    return jsonify({"data": results, "posts": results})
 
-# --- 5. LIKES, COMMENTS, SHARES & FAVORITES (BOOKMARKS) ---
+        title = data.get('title') or 'Untitled Creation'
+        content = data.get('content') or data.get('description') or ''
+        category = data.get('category') or 'Photography'
+        now = datetime.utcnow().isoformat()
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO posts (title, content, category, media_type, media_url, author_id, author_name, author_avatar, department, likes, shares, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)
+        ''', (
+            title,
+            content,
+            category,
+            media_type,
+            media_url,
+            student['id'],
+            student['name'],
+            student['avatar'],
+            student['department'],
+            now
+        ))
+        new_id = c.lastrowid
+        conn.commit()
+        c.execute("SELECT * FROM posts WHERE id = ?", (new_id,))
+        new_row = c.fetchone()
+        conn.close()
+
+        new_post = serialize_posts([new_row])[0]
+        return jsonify({"success": True, "post": new_post, "data": new_post})
+
+    sort_by = request.args.get('sort', 'latest')
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    if request.path in ['/user/posts', '/api/user/posts', '/api/posts/user'] and student:
+        c.execute("SELECT * FROM posts WHERE author_id = ? ORDER BY id DESC", (student['id'],))
+    elif sort_by == 'trending' or 'trending' in request.path:
+        c.execute("SELECT * FROM posts ORDER BY likes DESC, id DESC")
+    else:
+        c.execute("SELECT * FROM posts ORDER BY id DESC")
+
+    rows = c.fetchall()
+    conn.close()
+    posts = serialize_posts(rows)
+    return jsonify({"data": posts, "posts": posts})
+
+
+# --- 6. LIKES, COMMENTS, SHARES & BOOKMARKS ---
 @app.route('/posts/<int:post_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 @app.route('/api/posts/<int:post_id>', methods=['GET', 'PUT', 'DELETE', 'OPTIONS'])
 def single_post(post_id):
-    for post in posts_list:
-        if post['id'] == post_id:
-            return jsonify({"data": post, "post": post, **post})
-    return jsonify({"error": "Post not found"}), 404
-
-@app.route('/posts/<int:post_id>/like', methods=['POST', 'PUT', 'OPTIONS'])
-@app.route('/api/posts/<int:post_id>/like', methods=['POST', 'PUT', 'OPTIONS'])
-def like_post(post_id):
-    for post in posts_list:
-        if post['id'] == post_id:
-            post['likes'] = post.get('likes', 0) + 1
-            return jsonify({"success": True, "likes": post['likes'], "post": post, "data": post})
-    return jsonify({"error": "Post not found"}), 404
-
-@app.route('/posts/<int:post_id>/share', methods=['POST', 'OPTIONS'])
-@app.route('/api/posts/<int:post_id>/share', methods=['POST', 'OPTIONS'])
-def share_post(post_id):
-    for post in posts_list:
-        if post['id'] == post_id:
-            post['shares'] = post.get('shares', 0) + 1
-            return jsonify({"success": True, "shares": post['shares'], "post": post})
-    return jsonify({"error": "Post not found"}), 404
-
-@app.route('/posts/<int:post_id>/comments', methods=['GET', 'POST', 'OPTIONS'])
-@app.route('/api/posts/<int:post_id>/comments', methods=['GET', 'POST', 'OPTIONS'])
-def handle_comments(post_id):
-    for post in posts_list:
-        if post['id'] == post_id:
-            if request.method == 'POST':
-                data = request.get_json(silent=True) or request.form.to_dict() or {}
-                author_name = current_session_user.get('name', 'Student') if current_session_user else 'Guest'
-                new_comment = {
-                    "id": len(post.get('comments', [])) + 1,
-                    "author": author_name,
-                    "authorName": author_name,
-                    "authorAvatar": current_session_user.get('avatar', '') if current_session_user else '',
-                    "text": data.get('text') or data.get('content') or data.get('comment', ''),
-                    "content": data.get('text') or data.get('content') or data.get('comment', ''),
-                    "createdAt": datetime.utcnow().isoformat()
-                }
-                post.setdefault('comments', []).append(new_comment)
-                return jsonify({"success": True, "comment": new_comment, "data": post['comments']})
-            return jsonify({"data": post.get('comments', []), "comments": post.get('comments', [])})
-    return jsonify({"data": [], "comments": []})
-
-@app.route('/bookmarks', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
-@app.route('/api/bookmarks', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
-@app.route('/posts/<int:post_id>/bookmark', methods=['POST', 'DELETE', 'OPTIONS'])
-@app.route('/api/posts/<int:post_id>/bookmark', methods=['POST', 'DELETE', 'OPTIONS'])
-def handle_bookmarks(post_id=None):
-    if request.method == 'POST':
-        data = request.get_json(silent=True) or {}
-        target_id = post_id or data.get('postId') or data.get('id')
-        for post in posts_list:
-            if post['id'] == target_id and post not in bookmarks_list:
-                bookmarks_list.append(post)
-        return jsonify({"success": True, "data": bookmarks_list, "bookmarks": bookmarks_list})
-    return jsonify({"data": bookmarks_list, "bookmarks": bookmarks_list})
-
-# --- 6. CAMPUS EVENTS & ADMIN ---
-@app.route('/events', methods=['GET', 'POST', 'OPTIONS'])
-@app.route('/api/events', methods=['GET', 'POST', 'OPTIONS'])
-def handle_events():
-    if request.method == 'POST':
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        new_event = {
-            "id": len(events_list) + 1,
-            "title": data.get('title', 'Campus Event'),
-            "description": data.get('description') or data.get('content', ''),
-            "date": data.get('date', 'Upcoming'),
-            "location": data.get('location', 'MES Kalladi College'),
-            "organizer": current_session_user.get('name', 'Abhijith Pangath') if current_session_user else 'Campus Admin'
-        }
-        events_list.insert(0, new_event)
-        return jsonify({"success": True, "event": new_event, "data": new_event})
-    return jsonify({"data": events_list, "events": events_list})
-
-@app.route('/admin/reports', methods=['GET', 'OPTIONS'])
-@app.route('/admin/posts', methods=['GET', 'OPTIONS'])
-@app.route('/admin/users', methods=['GET', 'OPTIONS'])
-def get_admin_lists():
-    return jsonify({"data": []})
-
-port = int(os.environ.get("PORT", 10000))
-app.run(host="0.0.0.0", port=port)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM posts WHERE id = ?", (post_id,))
