@@ -25,6 +25,10 @@ def home():
 
 @app.route('/session')
 @app.route('/api/auth/session')
+@app.route('/me')
+@app.route('/api/auth/me')
+@app.route('/api/me')
+@app.route('/users/me')
 def get_session():
     return jsonify({"user": current_session_user})
 
