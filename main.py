@@ -23,7 +23,8 @@ def get_session():
 @app.route('/posts')
 def get_posts():
     # Returns some dummy data as an array so your React .map() function works perfectly
-    return jsonify([
+    return jsonify({
+        "data": [
         {
             "id": 1,
             "title": "Welcome to CampusCanvas!",
@@ -31,7 +32,8 @@ def get_posts():
             "author": "System",
             "likes": 100
         }
-    ])
+    ]
+})
 
 if __name__ == "__main__":
     # Render provides the PORT dynamically, so we must listen for it
