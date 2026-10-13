@@ -5,7 +5,12 @@ app = Flask(__name__)
 
 # Simple in-memory database storage for this session
 users_db = {}
-current_session_user = None
+current_session_user = {
+    "id": 1,
+    "name": "Abhijith Pangath",
+    "email": "abhijithpangath911@gmail.com",
+    "department": "Bsc Computer science"
+}
 
 @app.after_request
 def add_cors_headers(response):
@@ -48,14 +53,40 @@ def get_posts():
 def get_empty_lists():
     return jsonify({"data": []})
 
+@app.route('/user/posts')
+@app.route('/api/user/posts')
+def get_user_posts():
+    return jsonify({
+        "data": [
+            {
+                "id": 1,
+                "title": "My First CampusCanvas Post",
+                "content": "Hello world!",
+                "author": "Abhijith Pangath",
+                "likes": 5,
+                "category": "General"
+            }
+        ]
+    })
+
+@app.route('/user/profile')
+@app.route('/api/user/profile')
+def get_user_profile():
+    return jsonify({
+        "id": 1,
+        "name": "Abhijith Pangath",
+        "email": "abhijithpangath911@gmail.com",
+        "department": "Bsc Computer science"
+    })
+
 @app.route('/signup', methods=['POST'])
 @app.route('/api/auth/register', methods=['POST'])
 def signup():
     global current_session_user
     data = request.get_json() or {}
-    name = data.get('name', 'User')
-    email = data.get('email', 'user@example.com')
-    department = data.get('department', 'General')
+    name = data.get('name', 'Abhijith Pangath')
+    email = data.get('email', 'abhijithpangath911@gmail.com')
+    department = data.get('department', 'Bsc Computer science')
     
     user_obj = {
         "id": len(users_db) + 1,
@@ -78,12 +109,11 @@ def login():
     if email in users_db:
         current_session_user = users_db[email]
     else:
-        # Fallback generic user if email not found
         current_session_user = {
             "id": 1,
-            "name": data.get('name', 'Student User'),
-            "email": email or 'student@campus.edu',
-            "department": 'Computer Science'
+            "name": data.get('name', 'Abhijith Pangath'),
+            "email": email or 'abhijithpangath911@gmail.com',
+            "department": 'Bsc Computer science'
         }
         
     return jsonify({"success": True, "user": current_session_user, "token": "mock-token"})
