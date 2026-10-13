@@ -16,7 +16,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 // Module-level configuration
 // ---------------------------------------------------------------------------
 
-let _baseUrl: string | null = null;
+let _baseUrl: string | null ='https://campuscanvas-backend.onrender.com';
 let _authTokenGetter: AuthTokenGetter | null = null;
 let _csrfTokenGetter: CsrfTokenGetter | null = null;
 
