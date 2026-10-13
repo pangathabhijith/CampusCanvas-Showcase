@@ -3,9 +3,7 @@ import os
 
 app = Flask(__name__)
 
-# Persistent in-memory database of registered users
 users_db = {}
-# Default active session user initialized with your profile details
 current_session_user = {
     "id": 1,
     "name": "Abhijith Pangath",
@@ -85,4 +83,100 @@ def handle_posts():
         return jsonify({"success": True, "post": new_post})
     return jsonify({"data": posts_list})
 
-@app
+@app.route('/trending', methods=['GET', 'OPTIONS'])
+@app.route('/api/trending', methods=['GET', 'OPTIONS'])
+@app.route('/explore', methods=['GET', 'OPTIONS'])
+@app.route('/api/explore', methods=['GET', 'OPTIONS'])
+def get_trending_explore():
+    return jsonify({"data": posts_list})
+
+@app.route('/events', methods=['GET', 'OPTIONS'])
+@app.route('/api/events', methods=['GET', 'OPTIONS'])
+def get_events():
+    return jsonify({"data": []})
+
+@app.route('/creators', methods=['GET', 'OPTIONS'])
+@app.route('/api/creators', methods=['GET', 'OPTIONS'])
+@app.route('/bookmarks', methods=['GET', 'OPTIONS'])
+@app.route('/api/bookmarks', methods=['GET', 'OPTIONS'])
+@app.route('/admin/reports', methods=['GET', 'OPTIONS'])
+@app.route('/admin/posts', methods=['GET', 'OPTIONS'])
+@app.route('/admin/users', methods=['GET', 'OPTIONS'])
+def get_empty_lists():
+    return jsonify({"data": []})
+
+@app.route('/user/posts', methods=['GET', 'OPTIONS'])
+@app.route('/api/user/posts', methods=['GET', 'OPTIONS'])
+@app.route('/api/posts/user', methods=['GET', 'OPTIONS'])
+def get_user_posts():
+    return jsonify({"data": posts_list})
+
+@app.route('/profile', methods=['GET', 'OPTIONS'])
+@app.route('/user/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/user/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
+def get_user_profile():
+    user_data = current_session_user or {
+        "id": 1,
+        "name": "Abhijith Pangath",
+        "email": "abhijithpangath911@gmail.com",
+        "department": "Bsc Computer science"
+    }
+    response_data = {
+        "id": user_data.get("id"),
+        "name": user_data.get("name"),
+        "email": user_data.get("email"),
+        "department": user_data.get("department"),
+        "data": user_data
+    }
+    return jsonify(response_data)
+
+@app.route('/signup', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
+@app.route('/register', methods=['POST', 'OPTIONS'])
+@app.route('/api/register', methods=['POST', 'OPTIONS'])
+def signup():
+    global current_session_user
+    data = request.get_json() or {}
+    
+    name = data.get('name') or data.get('username') or 'Abhijith Pangath'
+    email = data.get('email') or 'abhijithpangath911@gmail.com'
+    department = data.get('department') or 'Bsc Computer science'
+    
+    user_obj = {
+        "id": len(users_db) + 1,
+        "name": name,
+        "email": email,
+        "department": department
+    }
+    users_db[email] = user_obj
+    current_session_user = user_obj
+    
+    return jsonify({"success": True, "user": user_obj, "token": "mock-token"})
+
+@app.route('/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
+def login():
+    global current_session_user
+    data = request.get_json() or {}
+    email = data.get('email')
+    
+    if email and email in users_db:
+        current_session_user = users_db[email]
+    else:
+        current_session_user = {
+            "id": 1,
+            "name": data.get('name') or 'Abhijith Pangath',
+            "email": email or 'abhijithpangath911@gmail.com',
+            "department": data.get('department') or 'Bsc Computer science'
+        }
+        if email:
+            users_db[email] = current_session_user
+            
+    return jsonify({"success": True, "user": current_session_user, "token": "mock-token"})
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
