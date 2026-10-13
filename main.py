@@ -15,6 +15,7 @@ def home():
     return "CampusCanvas API is running!"
 
 @app.route('/session')
+@app.route('/api/auth/session')
 def get_session():
     return jsonify({"user": None})
 
@@ -44,10 +45,12 @@ def get_empty_lists():
     return jsonify({"data": []})
 
 @app.route('/signup', methods=['POST'])
+@app.route('/api/auth/register', methods=['POST'])
 def signup():
     return jsonify({"success": True, "message": "Account created successfully"})
 
 @app.route('/login', methods=['POST'])
+@app.route('/api/auth/login', methods=['POST'])
 def login():
     return jsonify({"success": True, "message": "Logged in successfully", "token": "mock-token"})
 
