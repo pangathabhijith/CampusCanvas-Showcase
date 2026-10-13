@@ -21,7 +21,8 @@ def get_session():
 @app.route('/posts')
 def get_posts():
     sort_by = request.args.get('sort', 'featured')
-    return jsonify([
+    return jsonify({
+        "data": [
             {
                 "id": 1,
                 "title": f"Welcome to CampusCanvas ({sort_by} view)!",
@@ -30,7 +31,8 @@ def get_posts():
                 "likes": 100,
                 "category": "Announcement"
             }
-    ])
+        ]
+    })
 
 @app.route('/events')
 @app.route('/creators')
@@ -39,7 +41,7 @@ def get_posts():
 @app.route('/admin/posts')
 @app.route('/admin/users')
 def get_empty_lists():
-    return jsonify([])
+    return jsonify({"data": []})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
