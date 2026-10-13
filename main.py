@@ -21,8 +21,7 @@ def get_session():
 @app.route('/posts')
 def get_posts():
     sort_by = request.args.get('sort', 'featured')
-    return jsonify({
-        "data": [
+    return jsonify([
             {
                 "id": 1,
                 "title": f"Welcome to CampusCanvas ({sort_by} view)!",
@@ -31,8 +30,7 @@ def get_posts():
                 "likes": 100,
                 "category": "Announcement"
             }
-        ]
-    })
+    ])
 
 @app.route('/events')
 @app.route('/creators')
