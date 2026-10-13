@@ -32,6 +32,14 @@ def home():
 def get_session():
     return jsonify({"user": current_session_user})
 
+@app.route('/logout', methods=['POST', 'GET'])
+@app.route('/api/auth/logout', methods=['POST', 'GET'])
+@app.route('/api/logout', methods=['POST', 'GET'])
+def logout():
+    global current_session_user
+    current_session_user = None
+    return jsonify({"success": True, "message": "Logged out successfully"})
+
 @app.route('/posts')
 def get_posts():
     sort_by = request.args.get('sort', 'featured')
@@ -76,11 +84,16 @@ def get_user_posts():
 @app.route('/user/profile')
 @app.route('/api/user/profile')
 def get_user_profile():
-    return jsonify({
+    # Return both direct and wrapped formats so the frontend finds what it needs
+    user_data = current_session_user or {
         "id": 1,
         "name": "Abhijith Pangath",
         "email": "abhijithpangath911@gmail.com",
         "department": "Bsc Computer science"
+    }
+    return jsonify({
+        "data": user_data,
+        **user_data
     })
 
 @app.route('/signup', methods=['POST'])
