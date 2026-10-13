@@ -8,11 +8,11 @@ import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } f
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown,
   CircleHelp, Compass, Eye, Flag, Heart, ImagePlus, LogIn, LogOut, MessageCircle,
-  Palette, Search, Send, ShieldCheck, Sparkles, Star, TrendingUp,
+  Palette, Search, Send, ShieldCheck, Sparkles, Star, TrendingUp, Trash2,
   UserRound, Users, X, PenLine, CalendarDays, MapPin, Plus, Clock3, Camera,
 } from 'lucide-react';
 import {
-  useGetSession, useLogin, useLogout, useRegister, useGetPosts, useGetPost, useCreatePost,
+  useGetSession, useLogin, useLogout, useRegister, useGetPosts, useGetPost, useCreatePost, useDeletePost,
   useToggleLike, useToggleBookmark, useAddComment, useReportPost, useGetMyProfile,
   useUpdateMyProfile, useGetUserProfile, useToggleFollow, useGetCreators, useGetEvents,
   useEnterEvent, useCreateEvent, useGetAdminSummary, useGetAdminPosts, useModeratePost,
@@ -65,9 +65,10 @@ function EmptyState({ title, copy, action }: { title: string; copy: string; acti
 function PageTitle({ eyebrow, title, subtitle, side }: { eyebrow: string; title: string; subtitle?: string; side?: ReactNode }) {
   return <div className="page-title"><div><p className="eyebrow">{eyebrow}</p><h1 className="display-font">{title}</h1>{subtitle && <p className="page-subtitle">{subtitle}</p>}</div>{side && <div className="title-side">{side}</div>}</div>;
 }
-function WorkCard({ post, index = 0 }: { post: Post; index?: number }) {
+function WorkCard({ post, index = 0, canDelete = false }: { post: Post; index?: number; canDelete?: boolean }) {
   const artClass = `art-artwork art-tone-${index % 5}`;
   return <article className={`work-card ${index % 4 === 1 ? 'work-card-tall' : ''}`} data-testid={`card-post-${post.id}`}>
+    {canDelete && <DeletePostAction post={post} compact />}
     <Link href={`/post/${post.id}`} className={artClass}>
       {post.media_path ? post.media_type?.startsWith('video') ? <video src={post.media_path} muted preload="metadata" /> : <img src={post.media_path} alt={post.title} loading="lazy" /> :
         <span className="text-art"><small>{post.category}</small><strong>{post.title}</strong><i>{post.creator_department}</i></span>}
@@ -80,6 +81,36 @@ function WorkCard({ post, index = 0 }: { post: Post; index?: number }) {
       <div className="work-stats"><span><Heart size={14} /> {post.like_count}</span><span><MessageCircle size={14} /> {post.comment_count}</span><span><Eye size={14} /> {post.views}</span></div>
     </div>
   </article>;
+}
+function DeletePostAction({ post, compact = false, onDeleted }: { post: Post; compact?: boolean; onDeleted?: () => void }) {
+  const removePost = useDeletePost(mutRequest());
+  const cache = useQueryClient();
+  const [error, setError] = useState('');
+  const remove = () => {
+    const confirmed = window.confirm(`Delete “${post.title}” permanently?\n\nThis removes the uploaded file, comments, likes, and bookmarks. This cannot be undone.`);
+    if (!confirmed) return;
+    setError('');
+    removePost.mutate({ postId: post.id }, {
+      onSuccess: () => {
+        cache.removeQueries({ queryKey: getGetPostQueryKey(post.id), exact: true });
+        cache.invalidateQueries({ queryKey: getGetPostsQueryKey() });
+        cache.invalidateQueries({ queryKey: getGetMyProfileQueryKey() });
+        cache.invalidateQueries({ queryKey: getGetUserProfileQueryKey(post.user_id) });
+        cache.invalidateQueries({ queryKey: getGetBookmarksQueryKey() });
+        cache.invalidateQueries({ queryKey: getGetAdminSummaryQueryKey() });
+        cache.invalidateQueries({ queryKey: getGetAdminPostsQueryKey() });
+        cache.invalidateQueries({ queryKey: getGetAdminReportsQueryKey() });
+        onDeleted?.();
+      },
+      onError: (cause) => setError(cause.message),
+    });
+  };
+  return <div className={`delete-post-action ${compact ? 'delete-post-action-compact' : ''}`}>
+    <button type="button" className={compact ? 'work-card-delete' : 'button button-danger-soft'} onClick={remove} disabled={removePost.isPending} aria-label={`Delete ${post.title}`} title={`Delete ${post.title}`}>
+      <Trash2 size={compact ? 16 : 15} />{!compact && (removePost.isPending ? 'Deleting…' : 'Delete this work')}
+    </button>
+    {error && <p className="delete-post-error" role="alert">{error}</p>}
+  </div>;
 }
 function PostResults({ posts, loading, error, retry, emptyTitle = 'Nothing on this page yet', emptyCopy = 'Try another category or come back soon.' }: { posts?: Post[]; loading: boolean; error: boolean; retry: () => void; emptyTitle?: string; emptyCopy?: string }) {
   if (loading) return <LoadingGrid />;
@@ -223,6 +254,7 @@ function PostPage() {
   const report = useReportPost(mutRequest());
   const shareMutation = useSharePost(mutRequest());
   const cache = useQueryClient();
+  const [, setLocation] = useLocation();
   const [commentText, setCommentText] = useState('');
   const [showReport, setShowReport] = useState(false);
   const [reportReason, setReportReason] = useState('');
@@ -242,7 +274,8 @@ function PostPage() {
   return <div className="post-detail-page"><Link href="/explore" className="back-link"><ArrowLeft size={15} /> Back to the gallery</Link><div className="post-detail-grid"><article className="post-main">
     <div className={`post-media art-artwork art-tone-${post!.id % 5}`}>{post!.media_path ? post!.media_type?.startsWith('video') ? <video src={post!.media_path} controls /> : post!.media_type?.startsWith('audio') ? <audio src={post!.media_path} controls /> : <img src={post!.media_path} alt={post!.title} /> : <div className="text-art detail-art"><small>{post!.category}</small><strong>{post!.title}</strong><i>{post!.creator_department}</i></div>}</div>
     <div className="post-story"><div className="post-category-label">{post!.category} {post!.featured && <span><Star size={12} fill="currentColor" /> Featured</span>}</div><h1 className="display-font">{post!.title}</h1><p className="post-description">{post!.description}</p><div className="tag-list">{post!.tags?.split(',').filter(Boolean).map((tag) => <span key={tag}>#{tag.trim()}</span>)}</div>
-      <div className="post-actions"><button className={post!.liked ? 'action-on' : ''} onClick={() => act('like')} disabled={!session.data?.user || like.isPending} data-testid="button-like"><Heart size={17} fill={post!.liked ? 'currentColor' : 'none'} /> Appreciate <b>{post!.like_count}</b></button><button className={post!.bookmarked ? 'action-on' : ''} onClick={() => act('bookmark')} disabled={!session.data?.user || bookmark.isPending} data-testid="button-bookmark"><Bookmark size={17} fill={post!.bookmarked ? 'currentColor' : 'none'} /> Save</button><button onClick={share} disabled={shareMutation.isPending} data-testid="button-share"><ArrowUpRight size={17} /> Share <b>{post!.share_count ?? 0}</b></button><button onClick={() => setShowReport(!showReport)} data-testid="button-report"><Flag size={16} /> Report</button></div>
+       <div className="post-actions"><button className={post!.liked ? 'action-on' : ''} onClick={() => act('like')} disabled={!session.data?.user || like.isPending} data-testid="button-like"><Heart size={17} fill={post!.liked ? 'currentColor' : 'none'} /> Appreciate <b>{post!.like_count}</b></button><button className={post!.bookmarked ? 'action-on' : ''} onClick={() => act('bookmark')} disabled={!session.data?.user || bookmark.isPending} data-testid="button-bookmark"><Bookmark size={17} fill={post!.bookmarked ? 'currentColor' : 'none'} /> Save</button><button onClick={share} disabled={shareMutation.isPending} data-testid="button-share"><ArrowUpRight size={17} /> Share <b>{post!.share_count ?? 0}</b></button><button onClick={() => setShowReport(!showReport)} data-testid="button-report"><Flag size={16} /> Report</button></div>
+       {session.data?.user?.id === post!.user_id && <div className="post-owner-actions"><DeletePostAction post={post!} onDeleted={() => setLocation('/profile')} /></div>}
       {notice && <p className="inline-notice"><Check size={15} />{notice}<button onClick={() => setNotice('')} aria-label="Dismiss"><X size={14} /></button></p>}
        {showReport && (session.data?.user ? <form className="report-box" onSubmit={sendReport}><label>What should the campus team know?<textarea required minLength={3} maxLength={500} value={reportReason} onChange={(e) => setReportReason(e.target.value)} placeholder="Share a specific concern…" /></label><button className="button button-primary" disabled={report.isPending}>{report.isPending ? 'Sending…' : 'Send report'}</button></form> : <p className="comments-signin"><Link href="/login">Sign in</Link> to report a concern.</p>)}
     </div>
@@ -273,14 +306,14 @@ function ProfilePage() {
     <div className="profile-bio-row"><p>{user.bio || 'A new chapter, waiting to be written.'}</p><div className="profile-counts"><span><b>{user.post_count ?? 0}</b><small>works</small></span><span><b>{user.follower_count ?? 0}</b><small>following this work</small></span></div></div>
     {user.skills && <div className="tag-list profile-skills">{user.skills.split(',').filter(Boolean).map((skill) => <span key={skill}>{skill.trim()}</span>)}</div>}
     <div className="section-heading profile-work-heading"><div><p className="eyebrow">A growing collection</p><h2 className="display-font">Your work</h2></div><div className="profile-work-actions"><Link href="/bookmarks" className="button button-soft"><Bookmark size={15} /> Saved work</Link><Link href="/upload" className="button button-primary"><Plus size={15} /> Add a work</Link></div></div>
-     {user.id ? <UserPosts userId={user.id} /> : null}
+      {user.id ? <UserPosts userId={user.id} /> : null}
   </div></div>;
 }
 function UserPosts({ userId }: { userId: number }) {
   const profile = useGetUserProfile(userId, { query: { queryKey: getGetUserProfileQueryKey(userId) } });
   if (profile.isLoading) return <LoadingGrid />;
   if (profile.isError) return <ErrorNotice retry={() => profile.refetch()} />;
-  return profile.data?.posts.length ? <div className="work-grid">{profile.data.posts.map((post, i) => <WorkCard post={post} index={i} key={post.id} />)}</div> : <EmptyState title="Your first work belongs here" copy="Share something you’ve made and start building your campus portfolio." action={<Link href="/upload" className="button button-primary">Share a work <ArrowRight size={15} /></Link>} />;
+   return profile.data?.posts.length ? <div className="work-grid">{profile.data.posts.map((post, i) => <WorkCard post={post} index={i} canDelete key={post.id} />)}</div> : <EmptyState title="Your first work belongs here" copy="Share something you’ve made and start building your campus portfolio." action={<Link href="/upload" className="button button-primary">Share a work <ArrowRight size={15} /></Link>} />;
 }
 function BookmarksPage() {
   const session = useGetSession();

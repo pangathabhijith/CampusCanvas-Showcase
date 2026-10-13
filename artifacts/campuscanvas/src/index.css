@@ -358,8 +358,14 @@
 .section-heading h2 { margin:0; color:#3b3147; font-size:clamp(29px,3.6vw,42px); line-height:1; }
 .section-heading .eyebrow { margin-bottom:8px; }
 .work-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:25px 21px; align-items:start; }
-.work-card { min-width:0; }
+.work-card { min-width:0; position:relative; }
 .work-card-tall { margin-top:27px; }
+.delete-post-action { display:flex; flex-direction:column; align-items:flex-end; }
+.delete-post-action-compact { position:absolute; top:11px; right:11px; z-index:4; }
+.work-card-delete { width:37px; height:37px; display:grid; place-items:center; border:1px solid #efd4ca; border-radius:50%; color:#9e443d; background:#fffdf8ed; box-shadow:0 5px 14px #37284520; cursor:pointer; }
+.work-card-delete:hover:not(:disabled) { background:#f9e8e2; }
+.work-card-delete:disabled { cursor:not-allowed; opacity:.55; }
+.delete-post-error { max-width:230px; margin:6px 0 0; padding:7px 9px; border:1px solid #efd4ca; border-radius:7px; color:#9e443d; background:#fff8f4; font-size:10px; line-height:1.4; }
 .art-artwork { height:263px; display:block; position:relative; overflow:hidden; text-decoration:none; border-radius:13px; background:#ded4de; }
 .work-card-tall .art-artwork { height:302px; }
 .art-artwork img,.art-artwork video { width:100%; height:100%; display:block; object-fit:cover; transition:transform .5s cubic-bezier(.2,.7,.2,1); }
@@ -525,6 +531,7 @@
 .post-actions button:hover:not(:disabled),.post-actions .action-on { background:#eee7f0; border-color:#d7c9dc; color:#674672; }
 .post-actions button:disabled { opacity:.45; cursor:not-allowed; }
 .post-actions b { font-size:9px; }
+.post-owner-actions { display:flex; justify-content:flex-end; margin-top:12px; }
 .inline-notice { display:flex; align-items:center; gap:7px; padding:9px 11px; color:#5d735a; background:#edf0e2; border-radius:7px; font-size:10px; }
 .inline-notice button { margin-left:auto; border:0; background:none; color:inherit; cursor:pointer; }
 .report-box { display:flex; align-items:end; gap:12px; padding:14px; background:#f2ede6; border-radius:9px; margin-top:12px; }
