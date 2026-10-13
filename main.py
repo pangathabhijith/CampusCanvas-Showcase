@@ -3,7 +3,6 @@ import os
 
 app = Flask(__name__)
 
-# Simple in-memory storage
 users_db = {}
 current_session_user = {
     "id": 1,
@@ -23,35 +22,41 @@ posts_list = [
     }
 ]
 
+@app.before_request
+def handle_options():
+    if request.method == "OPTIONS":
+        response = jsonify({"status": "OK"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        return response, 200
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     return response
 
 @app.route('/')
 def home():
     return "CampusCanvas API is running!"
 
-# Session and User Me routes
-@app.route('/session')
-@app.route('/api/auth/session')
-@app.route('/me')
-@app.route('/api/auth/me')
-@app.route('/api/me')
-@app.route('/users/me')
-@app.route('/api/users/me')
+@app.route('/session', methods=['GET', 'OPTIONS'])
+@app.route('/api/auth/session', methods=['GET', 'OPTIONS'])
+@app.route('/me', methods=['GET', 'OPTIONS'])
+@app.route('/api/auth/me', methods=['GET', 'OPTIONS'])
+@app.route('/api/me', methods=['GET', 'OPTIONS'])
+@app.route('/users/me', methods=['GET', 'OPTIONS'])
+@app.route('/api/users/me', methods=['GET', 'OPTIONS'])
 def get_session():
     return jsonify({"user": current_session_user})
 
-# Users list route
-@app.route('/users')
-@app.route('/api/users')
+@app.route('/users', methods=['GET', 'OPTIONS'])
+@app.route('/api/users', methods=['GET', 'OPTIONS'])
 def get_users():
     return jsonify({"data": list(users_db.values())})
 
-# Logout routes
 @app.route('/logout', methods=['POST', 'GET', 'OPTIONS'])
 @app.route('/api/auth/logout', methods=['POST', 'GET', 'OPTIONS'])
 @app.route('/api/logout', methods=['POST', 'GET', 'OPTIONS'])
@@ -60,7 +65,6 @@ def logout():
     current_session_user = None
     return jsonify({"success": True, "message": "Logged out successfully"})
 
-# Posts routes (handling queries like ?sort=trending&limit=4)
 @app.route('/posts', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/api/posts', methods=['GET', 'POST', 'OPTIONS'])
 def handle_posts():
@@ -76,47 +80,41 @@ def handle_posts():
         }
         posts_list.insert(0, new_post)
         return jsonify({"success": True, "post": new_post})
-    
     return jsonify({"data": posts_list})
 
-# Trending & Explore routes
-@app.route('/trending')
-@app.route('/api/trending')
-@app.route('/explore')
-@app.route('/api/explore')
+@app.route('/trending', methods=['GET', 'OPTIONS'])
+@app.route('/api/trending', methods=['GET', 'OPTIONS'])
+@app.route('/explore', methods=['GET', 'OPTIONS'])
+@app.route('/api/explore', methods=['GET', 'OPTIONS'])
 def get_trending_explore():
     return jsonify({"data": posts_list})
 
-# Events routes
-@app.route('/events')
-@app.route('/api/events')
+@app.route('/events', methods=['GET', 'OPTIONS'])
+@app.route('/api/events', methods=['GET', 'OPTIONS'])
 def get_events():
     return jsonify({"data": []})
 
-# Other empty lists
-@app.route('/creators')
-@app.route('/api/creators')
-@app.route('/bookmarks')
-@app.route('/api/bookmarks')
-@app.route('/admin/reports')
-@app.route('/admin/posts')
-@app.route('/admin/users')
+@app.route('/creators', methods=['GET', 'OPTIONS'])
+@app.route('/api/creators', methods=['GET', 'OPTIONS'])
+@app.route('/bookmarks', methods=['GET', 'OPTIONS'])
+@app.route('/api/bookmarks', methods=['GET', 'OPTIONS'])
+@app.route('/admin/reports', methods=['GET', 'OPTIONS'])
+@app.route('/admin/posts', methods=['GET', 'OPTIONS'])
+@app.route('/admin/users', methods=['GET', 'OPTIONS'])
 def get_empty_lists():
     return jsonify({"data": []})
 
-# User posts
-@app.route('/user/posts')
-@app.route('/api/user/posts')
-@app.route('/api/posts/user')
+@app.route('/user/posts', methods=['GET', 'OPTIONS'])
+@app.route('/api/user/posts', methods=['GET', 'OPTIONS'])
+@app.route('/api/posts/user', methods=['GET', 'OPTIONS'])
 def get_user_posts():
     return jsonify({"data": posts_list})
 
-# Profile routes
-@app.route('/profile')
-@app.route('/user/profile')
-@app.route('/api/user/profile')
-@app.route('/api/profile')
-@app.route('/api/auth/profile')
+@app.route('/profile', methods=['GET', 'OPTIONS'])
+@app.route('/user/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/user/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/profile', methods=['GET', 'OPTIONS'])
+@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
 def get_user_profile():
     user_data = current_session_user or {
         "id": 1,
@@ -129,10 +127,10 @@ def get_user_profile():
         **user_data
     })
 
-# Signup / Register
 @app.route('/signup', methods=['POST', 'OPTIONS'])
 @app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
 @app.route('/register', methods=['POST', 'OPTIONS'])
+@app.route('/api/register', methods=['POST', 'OPTIONS'])
 def signup():
     global current_session_user
     data = request.get_json() or {}
@@ -151,9 +149,9 @@ def signup():
     
     return jsonify({"success": True, "user": user_obj})
 
-# Login
 @app.route('/login', methods=['POST', 'OPTIONS'])
 @app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
 def login():
     global current_session_user
     data = request.get_json() or {}
