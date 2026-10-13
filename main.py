@@ -39,7 +39,7 @@ def get_posts():
 @app.route('/admin/posts')
 @app.route('/admin/users')
 def get_empty_lists():
-    return jsonify({"data": []})
+    return jsonify([])
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
