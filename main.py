@@ -3,6 +3,10 @@ import os
 
 app = Flask(__name__)
 
+# Simple in-memory database storage for this session
+users_db = {}
+current_session_user = None
+
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -17,7 +21,7 @@ def home():
 @app.route('/session')
 @app.route('/api/auth/session')
 def get_session():
-    return jsonify({"user": None})
+    return jsonify({"user": current_session_user})
 
 @app.route('/posts')
 def get_posts():
@@ -47,12 +51,42 @@ def get_empty_lists():
 @app.route('/signup', methods=['POST'])
 @app.route('/api/auth/register', methods=['POST'])
 def signup():
-    return jsonify({"success": True, "message": "Account created successfully"})
+    global current_session_user
+    data = request.get_json() or {}
+    name = data.get('name', 'User')
+    email = data.get('email', 'user@example.com')
+    department = data.get('department', 'General')
+    
+    user_obj = {
+        "id": len(users_db) + 1,
+        "name": name,
+        "email": email,
+        "department": department
+    }
+    users_db[email] = user_obj
+    current_session_user = user_obj
+    
+    return jsonify({"success": True, "user": user_obj})
 
 @app.route('/login', methods=['POST'])
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    return jsonify({"success": True, "message": "Logged in successfully", "token": "mock-token"})
+    global current_session_user
+    data = request.get_json() or {}
+    email = data.get('email')
+    
+    if email in users_db:
+        current_session_user = users_db[email]
+    else:
+        # Fallback generic user if email not found
+        current_session_user = {
+            "id": 1,
+            "name": data.get('name', 'Student User'),
+            "email": email or 'student@campus.edu',
+            "department": 'Computer Science'
+        }
+        
+    return jsonify({"success": True, "user": current_session_user, "token": "mock-token"})
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
