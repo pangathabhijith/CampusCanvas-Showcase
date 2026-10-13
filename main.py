@@ -34,6 +34,15 @@ def get_posts():
         ]
     })
 
+@app.route('/events')
+@app.route('/creators')
+@app.route('/bookmarks')
+@app.route('/admin/reports')
+@app.route('/admin/posts')
+@app.route('/admin/users')
+def get_empty_lists():
+    return jsonify({"data": []})
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
