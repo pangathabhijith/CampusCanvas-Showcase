@@ -3,7 +3,6 @@ import os
 
 app = Flask(__name__)
 
-# This allows your Cloudflare frontend to request data from this Render backend
 @app.after_request
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -17,25 +16,24 @@ def home():
 
 @app.route('/session')
 def get_session():
-    # Returns an empty session so the frontend doesn't crash looking for a user
-    return jsonify(None)
+    return jsonify({"user": None})
 
 @app.route('/posts')
 def get_posts():
-    # Returns some dummy data as an array so your React .map() function works perfectly
+    sort_by = request.args.get('sort', 'featured')
     return jsonify({
         "data": [
-        {
-            "id": 1,
-            "title": "Welcome to CampusCanvas!",
-            "content": "The backend is successfully connected and running on Render.",
-            "author": "System",
-            "likes": 100
-        }
-    ]
-})
+            {
+                "id": 1,
+                "title": f"Welcome to CampusCanvas ({sort_by} view)!",
+                "content": "The backend is successfully connected and running on Render.",
+                "author": "System",
+                "likes": 100,
+                "category": "Announcement"
+            }
+        ]
+    })
 
-if __name__ == "__main__":
-    # Render provides the PORT dynamically, so we must listen for it
+if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
