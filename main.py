@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+ from flask import Flask, jsonify, request
 import os
 
 app = Flask(__name__)
@@ -8,7 +8,9 @@ current_session_user = {
     "id": 1,
     "name": "Abhijith Pangath",
     "email": "abhijithpangath911@gmail.com",
-    "department": "Bsc Computer science"
+    "department": "Bsc Computer science",
+    "bio": "",
+    "practices": ""
 }
 
 posts_list = [
@@ -111,12 +113,21 @@ def get_empty_lists():
 def get_user_posts():
     return jsonify({"data": posts_list})
 
-@app.route('/profile', methods=['GET', 'OPTIONS'])
-@app.route('/user/profile', methods=['GET', 'OPTIONS'])
-@app.route('/api/user/profile', methods=['GET', 'OPTIONS'])
-@app.route('/api/profile', methods=['GET', 'OPTIONS'])
-@app.route('/api/auth/profile', methods=['GET', 'OPTIONS'])
-def get_user_profile():
+@app.route('/profile', methods=['GET', 'PUT', 'POST', 'OPTIONS'])
+@app.route('/user/profile', methods=['GET', 'PUT', 'POST', 'OPTIONS'])
+@app.route('/api/user/profile', methods=['GET', 'PUT', 'POST', 'OPTIONS'])
+@app.route('/api/profile', methods=['GET', 'PUT', 'POST', 'OPTIONS'])
+@app.route('/api/auth/profile', methods=['GET', 'PUT', 'POST', 'OPTIONS'])
+def handle_user_profile():
+    global current_session_user
+    if request.method in ['PUT', 'POST']:
+        data = request.get_json() or {}
+        if current_session_user:
+            current_session_user['name'] = data.get('name', current_session_user.get('name'))
+            current_session_user['bio'] = data.get('bio', current_session_user.get('bio', ''))
+            current_session_user['practices'] = data.get('practices', current_session_user.get('practices', ''))
+        return jsonify({"success": True, "user": current_session_user})
+
     user_data = current_session_user or {
         "id": 1,
         "name": "Abhijith Pangath",
@@ -128,6 +139,8 @@ def get_user_profile():
         "name": user_data.get("name"),
         "email": user_data.get("email"),
         "department": user_data.get("department"),
+        "bio": user_data.get("bio", ""),
+        "practices": user_data.get("practices", ""),
         "data": user_data
     }
     return jsonify(response_data)
@@ -148,7 +161,9 @@ def signup():
         "id": len(users_db) + 1,
         "name": name,
         "email": email,
-        "department": department
+        "department": department,
+        "bio": "",
+        "practices": ""
     }
     users_db[email] = user_obj
     current_session_user = user_obj
@@ -170,7 +185,9 @@ def login():
             "id": 1,
             "name": data.get('name') or 'Abhijith Pangath',
             "email": email or 'abhijithpangath911@gmail.com',
-            "department": data.get('department') or 'Bsc Computer science'
+            "department": data.get('department') or 'Bsc Computer science',
+            "bio": "",
+            "practices": ""
         }
         if email:
             users_db[email] = current_session_user
