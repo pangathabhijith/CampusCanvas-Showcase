@@ -1,55 +1,45 @@
 from flask import Flask, jsonify, request
-import os, uuid, base64
-from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 users_db = {}
-sessions = {}
-posts_list = []
-events_list = []
+current_session_user = None
 
-def get_current_user():
-    tok = request.headers.get('Authorization', '').replace('Bearer ', '').strip()
-    email = sessions.get(tok) or sessions.get('latest')
-    if email and email in users_db:
-        return users_db[email]
-    return {
+posts_list = [
+    {
         "id": 1,
-        "name": "Student",
-        "email": "student@campus.edu",
-        "department": "Bsc Computer science",
-        "role": "Student",
-        "bio": "",
-        "practices": ""
+        "title": "Welcome to CampusCanvas!",
+        "content": "Share your photography, drawings, videos, audio, and campus life.",
+        "author": "CampusCanvas",
+        "department": "Campus Community",
+        "likes": 10,
+        "category": "Announcement"
     }
+]
 
-def get_uploaded_file():
-    for f in request.files.values():
-        if f and f.filename:
-            m = f.mimetype or 'image/jpeg'
-            b64 = base64.b64encode(f.read()).decode('utf-8')
-            return f"data:{m};base64,{b64}"
-    return None
+def normalize_practices(val):
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str) and val.strip():
+        return [x.strip() for x in val.split(",") if x.strip()]
+    return []
 
 @app.before_request
 def handle_options():
     if request.method == "OPTIONS":
-        r = jsonify({"status": "OK"})
-        r.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-        r.headers['Access-Control-Allow-Credentials'] = 'true'
-        r.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
-        r.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-        return r, 200
+        response = jsonify({"status": "OK"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        return response, 200
 
 @app.after_request
-def add_cors(r):
-    r.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-    r.headers['Access-Control-Allow-Credentials'] = 'true'
-    r.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
-    r.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-    return r
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    return response
 
 @app.route('/')
 def home():
@@ -62,68 +52,39 @@ def home():
 @app.route('/api/me', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/users/me', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
 @app.route('/api/users/me', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/user/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/api/user/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/api/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/api/auth/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-def handle_profile():
-    u = get_current_user()
+def get_session():
+    global current_session_user
     if request.method in ['PUT', 'PATCH', 'POST']:
-        d = request.get_json(silent=True) or request.form.to_dict() or {}
-        for k in ['name', 'department', 'bio', 'phone', 'practices', 'creativePractices']:
-            if k in d and d[k] is not None:
-                u['practices' if k == 'creativePractices' else k] = d[k]
-        f_url = get_uploaded_file()
-        if f_url:
-            u['avatar'] = f_url
-        users_db[u['email']] = u
-        return jsonify({"success": True, "user": u})
-    return jsonify({
-        "id": u.get("id", 1),
-        "name": u.get("name", ""),
-        "email": u.get("email", ""),
-        "department": u.get("department", ""),
-        "bio": u.get("bio", ""),
-        "practices": u.get("practices", ""),
-        "user": u,
-        "data": u
-    })
+        data = request.get_json(silent=True) or {}
+        if current_session_user is None:
+            current_session_user = {"id": 1, "name": "Student", "email": "student@campus.edu", "department": "Computer Science"}
+        if 'name' in data and data['name']:
+            current_session_user['name'] = data['name']
+        if 'department' in data and data['department']:
+            current_session_user['department'] = data['department']
+        if 'bio' in data:
+            current_session_user['bio'] = data['bio']
+        if 'practices' in data or 'creativePractices' in data:
+            raw = data.get('practices') or data.get('creativePractices')
+            current_session_user['practices'] = normalize_practices(raw)
+        email = current_session_user.get('email')
+        if email:
+            users_db[email] = current_session_user
+        return jsonify({"success": True, "user": current_session_user})
+    return jsonify({"user": current_session_user})
 
-@app.route('/signup', methods=['POST', 'OPTIONS'])
-@app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
-@app.route('/register', methods=['POST', 'OPTIONS'])
-@app.route('/api/register', methods=['POST', 'OPTIONS'])
-@app.route('/login', methods=['POST', 'OPTIONS'])
-@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
-@app.route('/api/login', methods=['POST', 'OPTIONS'])
-def auth():
-    d = request.get_json(silent=True) or request.form.to_dict() or {}
-    email = (d.get('email') or f"{uuid.uuid4().hex[:6]}@campus.edu").strip().lower()
-    ex = users_db.get(email, {})
-    u = {
-        "id": ex.get("id", len(users_db) + 1),
-        "name": d.get('name') or ex.get('name') or email.split('@')[0],
-        "email": email,
-        "department": d.get('department') or ex.get('department') or 'Bsc Computer science',
-        "role": d.get('role') or ex.get('role') or 'Student',
-        "bio": d.get('bio') or ex.get('bio') or '',
-        "practices": d.get('practices') or ex.get('practices') or ''
-    }
-    f_url = get_uploaded_file()
-    if f_url:
-        u['avatar'] = f_url
-    users_db[email] = u
-    tok = str(uuid.uuid4())
-    sessions[tok] = email
-    sessions['latest'] = email
-    return jsonify({"success": True, "user": u, "token": tok})
+@app.route('/users', methods=['GET', 'OPTIONS'])
+@app.route('/api/users', methods=['GET', 'OPTIONS'])
+def get_users():
+    return jsonify({"data": list(users_db.values())})
 
-@app.route('/logout', methods=['POST', 'GET', 'OPTIONS'])
-@app.route('/api/auth/logout', methods=['POST', 'GET', 'OPTIONS'])
-@app.route('/api/logout', methods=['POST', 'GET', 'OPTIONS'])
+@app.route('/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
+@app.route('/api/auth/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
+@app.route('/api/logout', methods=['POST', 'GET', 'DELETE', 'OPTIONS'])
 def logout():
-    return jsonify({"success": True, "user": None})
+    global current_session_user
+    current_session_user = None
+    return jsonify({"success": True, "user": None, "message": "Logged out successfully"})
 
 @app.route('/posts', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/api/posts', methods=['GET', 'POST', 'OPTIONS'])
@@ -135,34 +96,23 @@ def logout():
 @app.route('/api/user/posts', methods=['GET', 'OPTIONS'])
 @app.route('/api/posts/user', methods=['GET', 'OPTIONS'])
 def handle_posts():
-    u = get_current_user()
     if request.method == 'POST':
-        d = request.get_json(silent=True) or request.form.to_dict() or {}
-        img = get_uploaded_file() or d.get('imageUrl') or d.get('image') or d.get('mediaUrl') or ''
-        p = {
+        data = request.get_json(silent=True) or {}
+        author_name = current_session_user.get('name', 'Student') if current_session_user else 'Student'
+        author_dept = current_session_user.get('department', '') if current_session_user else ''
+        new_post = {
             "id": len(posts_list) + 1,
-            "title": d.get('title', 'Untitled Work'),
-            "content": d.get('content') or d.get('description', ''),
-            "category": d.get('category', 'Photography'),
-            "imageUrl": img,
-            "author": u.get('name', 'Student'),
-            "department": u.get('department', ''),
-            "likes": 0,
-            "createdAt": datetime.utcnow().isoformat()
+            "title": data.get('title', 'Untitled Work'),
+            "content": data.get('content') or data.get('description', ''),
+            "category": data.get('category', 'Photography'),
+            "imageUrl": data.get('imageUrl') or data.get('image') or data.get('mediaUrl', ''),
+            "author": author_name,
+            "department": author_dept,
+            "likes": 0
         }
-        posts_list.insert(0, p)
-        return jsonify({"success": True, "post": p, "data": p})
+        posts_list.insert(0, new_post)
+        return jsonify({"success": True, "post": new_post})
     return jsonify({"data": posts_list})
-
-@app.route('/users', methods=['GET', 'OPTIONS'])
-@app.route('/api/users', methods=['GET', 'OPTIONS'])
-def get_users():
-    return jsonify({"data": list(users_db.values())})
-
-@app.route('/users/<int:uid>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-@app.route('/api/users/<int:uid>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
-def single_user(uid):
-    return handle_profile()
 
 @app.route('/events', methods=['GET', 'POST', 'OPTIONS'])
 @app.route('/api/events', methods=['GET', 'POST', 'OPTIONS'])
@@ -173,8 +123,76 @@ def single_user(uid):
 @app.route('/admin/reports', methods=['GET', 'OPTIONS'])
 @app.route('/admin/posts', methods=['GET', 'OPTIONS'])
 @app.route('/admin/users', methods=['GET', 'OPTIONS'])
-def empty_lists():
+def get_empty_lists():
     return jsonify({"data": []})
 
-port = int(os.environ.get("PORT", 10000))
-app.run(host="0.0.0.0", port=port)
+@app.route('/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/user/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/api/user/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/api/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/api/auth/profile', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/users/<int:user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+@app.route('/api/users/<int:user_id>', methods=['GET', 'PUT', 'PATCH', 'POST', 'OPTIONS'])
+def get_user_profile(user_id=None):
+    if request.method in ['PUT', 'PATCH', 'POST']:
+        return get_session()
+    user_data = current_session_user or {
+        "id": 1,
+        "name": "Student",
+        "email": "student@campus.edu",
+        "department": "Computer Science"
+    }
+    resp = dict(user_data)
+    resp["data"] = user_data
+    return jsonify(resp)
+
+@app.route('/signup', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/register', methods=['POST', 'OPTIONS'])
+@app.route('/register', methods=['POST', 'OPTIONS'])
+@app.route('/api/register', methods=['POST', 'OPTIONS'])
+def signup():
+    global current_session_user
+    data = request.get_json(silent=True) or {}
+    name = data.get('name') or data.get('username') or 'Student'
+    email = (data.get('email') or 'student@campus.edu').strip().lower()
+    department = data.get('department') or 'Computer Science'
+    role = data.get('role') or 'Student'
+
+    user_obj = {
+        "id": len(users_db) + 1,
+        "name": name,
+        "email": email,
+        "department": department,
+        "role": role
+    }
+    users_db[email] = user_obj
+    current_session_user = user_obj
+    return jsonify({"success": True, "user": user_obj, "token": "mock-token"})
+
+@app.route('/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/login', methods=['POST', 'OPTIONS'])
+def login():
+    global current_session_user
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+
+    if email and email in users_db:
+        current_session_user = users_db[email]
+    else:
+        current_session_user = {
+            "id": len(users_db) + 1,
+            "name": data.get('name') or (email.split('@')[0] if email else 'Student'),
+            "email": email or 'student@campus.edu',
+            "department": data.get('department') or 'Computer Science',
+            "role": 'Student'
+        }
+        if email:
+            users_db[email] = current_session_user
+
+    return jsonify({"success": True, "user": current_session_user, "token": "mock-token"})
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
